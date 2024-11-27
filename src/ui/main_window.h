@@ -73,4 +73,5 @@ class MainWindow : public QMainWindow {
     bool debug_mode_{true};
 
     QSerialPort* ser_water_{nullptr};
+    uint8_t current_cmd_{0b0000};
 };

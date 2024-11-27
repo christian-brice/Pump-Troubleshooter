@@ -9,6 +9,7 @@
 #include "main_window.h"
 
 // C++ Standard Library Headers
+#include <bitset>
 #include <sys/stat.h>
 
 // Other Library Headers
@@ -192,11 +193,13 @@ void MainWindow::on_tb_a_in_clicked() {
         ui_->tb_a_in->setStyleSheet("color: green;");
 
         // Disable opposite button
+        current_cmd_ &= 0b1101;  // only zero opposite action's bit
         ui_->tb_a_out->setEnabled(false);
         ui_->tb_a_out->setStyleSheet("color: gray;");
 
         // Send start command
-        auto to_write = static_cast<char>(0b1000);
+        current_cmd_ |= 0b1000;
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
     } else {
         // Reset visual indicator
@@ -207,8 +210,14 @@ void MainWindow::on_tb_a_in_clicked() {
         ui_->tb_a_out->setStyleSheet("color: red;");
 
         // Send stop command
-        auto to_write = static_cast<char>(0b0000);
+        current_cmd_ &= 0b0111;  // only zero this action's bit
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
+    }
+
+    if (debug_mode_) {
+        std::bitset<4> x(current_cmd_);
+        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
     }
 }
 
@@ -224,11 +233,13 @@ void MainWindow::on_tb_b_in_clicked() {
         ui_->tb_b_in->setStyleSheet("color: green;");
 
         // Disable opposite button
+        current_cmd_ &= 0b1110;  // only zero opposite action's bit
         ui_->tb_b_out->setEnabled(false);
         ui_->tb_b_out->setStyleSheet("color: gray;");
 
         // Send start command
-        auto to_write = static_cast<char>(0b0100);
+        current_cmd_ |= 0b0100;
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
     } else {
         // Reset visual indicator
@@ -239,8 +250,14 @@ void MainWindow::on_tb_b_in_clicked() {
         ui_->tb_b_out->setStyleSheet("color: red;");
 
         // Send stop command
-        auto to_write = static_cast<char>(0b0000);
+        current_cmd_ &= 0b1011;  // only zero this action's bit
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
+    }
+
+    if (debug_mode_) {
+        std::bitset<4> x(current_cmd_);
+        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
     }
 }
 
@@ -256,11 +273,13 @@ void MainWindow::on_tb_a_out_clicked() {
         ui_->tb_a_out->setStyleSheet("color: green;");
 
         // Disable opposite button
+        current_cmd_ &= 0b0111;  // only zero opposite action's bit
         ui_->tb_a_in->setEnabled(false);
         ui_->tb_a_in->setStyleSheet("color: gray;");
 
         // Send start command
-        auto to_write = static_cast<char>(0b0010);
+        current_cmd_ |= 0b0010;
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
     } else {
         // Reset visual indicator
@@ -271,8 +290,14 @@ void MainWindow::on_tb_a_out_clicked() {
         ui_->tb_a_in->setStyleSheet("color: red;");
 
         // Send stop command
-        auto to_write = static_cast<char>(0b0000);
+        current_cmd_ &= 0b1101;  // only zero this action's bit
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
+    }
+
+    if (debug_mode_) {
+        std::bitset<4> x(current_cmd_);
+        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
     }
 }
 
@@ -288,11 +313,13 @@ void MainWindow::on_tb_b_out_clicked() {
         ui_->tb_b_out->setStyleSheet("color: green;");
 
         // Disable opposite button
+        current_cmd_ &= 0b1011;  // only zero opposite action's bit
         ui_->tb_b_in->setEnabled(false);
         ui_->tb_b_in->setStyleSheet("color: gray;");
 
         // Send start command
-        auto to_write = static_cast<char>(0b0001);
+        current_cmd_ |= 0b0001;
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
     } else {
         // Reset visual indicator
@@ -303,8 +330,14 @@ void MainWindow::on_tb_b_out_clicked() {
         ui_->tb_b_in->setStyleSheet("color: red;");
 
         // Send stop command
-        auto to_write = static_cast<char>(0b0000);
+        current_cmd_ &= 0b1110;  // only zero this action's bit
+        auto to_write = static_cast<char>(current_cmd_);
         ser_water_->write(&to_write);
+    }
+
+    if (debug_mode_) {
+        std::bitset<4> x(current_cmd_);
+        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
     }
 }
 
