@@ -23,7 +23,6 @@
  * !Helper Functions
  * !Menu Bar
  * !Main Window
- * !Pumps
  * !Uncategorized
  */
 
@@ -37,9 +36,6 @@ MainWindow::MainWindow(QWidget* parent)
       ser_water_(new QSerialPort(this)) {
     ui_->setupUi(this);
 
-    // Set UI elements
-    // ui_->a_debug_mode->setChecked(debug_mode_);
-
     // Check if app is running in Windows Subsystem for Linux (WSL2)
     {
         const char* wsl_path = "/run/WSL";
@@ -52,12 +48,22 @@ MainWindow::MainWindow(QWidget* parent)
                    "you have properly forwarded your USB connections.";
         }
     }
+
+    // Set initial state UI of elements
+    ui_->a_debug_mode->setChecked(debug_mode_);
+
+    // Populate the combo box
+    ui_->pb_refresh->animateClick();
 }
 
 /**
  * @brief Standard destructor.
  */
 MainWindow::~MainWindow() {
+    if (ser_water_->isOpen()) {
+        ser_water_->close();
+    }
+
     delete ui_;
 }
 
@@ -74,9 +80,9 @@ namespace {  // local to this file
 //------------------------------------------------------------------------------
 
 /**
- * @brief Toggles debug prinouts for this object and all its children.
+ * @brief Event handler for "Preferences" menu bar action "Debug Mode".
+ *        Toggles debug prinouts for this object and all its children.
  */
-/*
 void MainWindow::on_a_debug_mode_toggled(bool checked) {
     debug_mode_ = checked;
 
@@ -84,134 +90,223 @@ void MainWindow::on_a_debug_mode_toggled(bool checked) {
         qDebug() << "[DEBUG] Debug mode enabled";
     }
 }
-*/
 
 /**
- * @brief Event handler for "Pumps" menu bar action "Connect".
- *        Brings up a dialog box of available serial USB devices.
+ * @brief Event handler for "Tools" menu bar action "Serial Dialog (non-Qt)".
+ *        Opens a "Serial Device" dialog for selecting a "USB"-type device.
  */
-/*
-void MainWindow::on_a_pump_connect_triggered() {
-    // Check if SerialWater Arduino (COM3) is connected
-    bool found = false;
-    foreach (const QSerialPortInfo& info, QSerialPortInfo::availablePorts()) {
-        if (info.portName() == "COM3") {
-            found = true;
-            break;
-        }
-        if (debug_mode_) {
-            // Enumerate available serial ports
-            qDebug() << "[DEBUG] Found SerialPort with following metadata";
-            qDebug() << "  Port: " << info.portName();
-            qDebug() << "  Description: " << info.description();
-            qDebug() << "  Manufacturer: " << info.manufacturer() << "\n";
-            return;
-        }
-    }
+void MainWindow::on_a_serial_dialog_triggered() {
+    // Display the "Serial Device" dialog
+    SerialDialog w_serial_dialog("USB", debug_mode_);
+    w_serial_dialog.setModal(true);
+    w_serial_dialog.exec();
 
-    if (!found) {
-        qDebug() << "[ERROR] SerialWater (COM3) not found!";
+    // Only continue if "Connect" was successful
+    if (w_serial_dialog.result() != QDialog::Accepted) {
+        qWarning() << "[WARN] Failed to connect!";
         return;
     }
 
+    qDebug() << "Selected " << w_serial_dialog.GetDeviceName();
+
+    // TODO: implementation
+}
+
+//------------------------------------------------------------------------------
+// !Main Window
+//------------------------------------------------------------------------------
+
+/**
+ * @brief Connects to the highlighted serial device upon selection.
+ */
+void MainWindow::on_cb_serial_name_currentTextChanged(const QString& sel) {
+    // Clear the existing Serial object, if it exists
+    if (ser_water_->isOpen()) {
+        ser_water_->close();
+    }
+
     // Set port options
-    ser_water_->setPortName("COM3");
     ser_water_->setBaudRate(QSerialPort::Baud115200);
     ser_water_->setDataBits(QSerialPort::Data8);
     ser_water_->setParity(QSerialPort::NoParity);
     ser_water_->setStopBits(QSerialPort::OneStop);
     ser_water_->setFlowControl(QSerialPort::NoFlowControl);
 
-    // Only continue if "open" was successful
+    // Only continue if "open" is successful
     if (!ser_water_->open(QIODevice::ReadWrite)) {
-        qDebug() << "[ERROR] Failed to open port: COM3!";
+        qDebug() << "[ERROR] Failed to open port " << ser_water_->portName()
+                 << "\n";
         QMessageBox::critical(this, tr("Error"), ser_water_->errorString());
         return;
     }
 
-    // Ensure data gets processed when it's made available
-    connect(ser_water_, &QSerialPort::readyRead, this,
-            &MainWindow::UpdatePumpVals);
-
-    // Reflect changes in UI
-    ui_->a_pump_connect->setEnabled(false);
-    ui_->a_pump_disconnect->setEnabled(true);
-    ui_->pb_pump_enable->setEnabled(true);
-    ui_->pb_pump_disable->setEnabled(true);
-    ui_->pb_pump_drain->setEnabled(true);
+    // Enable fluid system controls
+    ui_->tb_a_in->setEnabled(true);
+    ui_->tb_a_in->setStyleSheet("color: red;");
+    ui_->tb_b_in->setEnabled(true);
+    ui_->tb_b_in->setStyleSheet("color: red;");
+    ui_->tb_a_out->setEnabled(true);
+    ui_->tb_a_out->setStyleSheet("color: red;");
+    ui_->tb_b_out->setEnabled(true);
+    ui_->tb_b_out->setStyleSheet("color: red;");
 }
-*/
 
 /**
- * @brief Event handler for "Pumps" menu bar action "Disconnect".
- *        Terminates the connection to the `SerialWater` Arduino, if it exists.
+ * @brief Refreshes the list of available serial devices.
  */
-/*
-void MainWindow::on_a_pump_disconnect_triggered() {
-    // Clear the Serial object
-    if (ser_water_->isOpen()) {
-        ser_water_->close();
+void MainWindow::on_pb_refresh_clicked() {
+    if (debug_mode_) {
+        qDebug() << "[DEBUG] Refreshing available serial ports...";
     }
 
-    // Reflect changes in UI
-    ui_->a_pump_connect->setEnabled(true);
-    ui_->a_pump_disconnect->setEnabled(false);
-    ui_->pb_pump_enable->setEnabled(false);
-    ui_->pb_pump_disable->setEnabled(false);
-    ui_->pb_pump_drain->setEnabled(false);
-}
-*/
+    // Populate serial device selector combo box
+    bool found = false;
+    const auto ports = QSerialPortInfo::availablePorts();
+    for (const auto& port_info : ports) {
+        if (debug_mode_) {
+            qDebug() << "[DEBUG] Found SerialPort with following metadata\n";
+            qDebug() << "  Port:" << port_info.portName() << "\n"
+                     << "  Description:" << port_info.description() << "\n"
+                     << "  Manufacturer:" << port_info.manufacturer() << "\n";
+        }
 
-//------------------------------------------------------------------------------
-// !Main Window
-//------------------------------------------------------------------------------
-
-//------------------------------------------------------------------------------
-// !Pumps
-//------------------------------------------------------------------------------
-
-/**
- * @brief Enables operation of fluid system pumps.
- */
-/*
-void MainWindow::on_pb_pump_enable_clicked() {
-    if (!ser_water_->isOpen()) {
-        qDebug() << "[WARN] SerialWater not connected!";
-        return;
+        // Populate ComboBox (new items are appended to existing list)
+        ui_->cb_serial_name->addItem(port_info.portName());
+        found = true;  // only needs to be set once
     }
 
-    qDebug() << "[WARN] Pump control not yet implemented!";
-
-    // TODO: implementation (adapt code below)
-
-    // water_en_ = true;
-    // water_mode_ = WaterMode::kStandby;
+    if (!found) {
+        qWarning() << "[WARN] No serial devices were found!";
+    }
 }
-*/
 
 /**
- * @brief Disables operation of fluid system pumps.
+ * @brief Controls state of A-side fluid input.
  *
- * @todo Combine funcitonality with `on_pb_pump_enable_clicked()` and
- * refactor the resulting function. Don't forget to rename it to something
- * that makes more sense, e.g., including the word "toggle". For reference
- * on changing button text to reflect state, see
- * `on_pb_camera_record_clicked()`.
+ * @note Bit field "0b123":
+ *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
  */
-/*
-void MainWindow::on_pb_pump_disable_clicked() {
-    if (!ser_water_->isOpen()) {
-        qDebug() << "[WARN] SerialWater not connected!";
-        return;
+void MainWindow::on_tb_a_in_clicked() {
+    if (ui_->tb_a_in->isChecked()) {
+        // Set visual indicator
+        ui_->tb_a_in->setStyleSheet("color: green;");
+
+        // Disable opposite button
+        ui_->tb_a_out->setEnabled(false);
+        ui_->tb_a_out->setStyleSheet("color: gray;");
+
+        // Send start command
+        auto to_write = static_cast<char>(0b1000);
+        ser_water_->write(&to_write);
+    } else {
+        // Reset visual indicator
+        ui_->tb_a_in->setStyleSheet("color: red;");
+
+        // Re-enable opposite button
+        ui_->tb_a_out->setEnabled(true);
+        ui_->tb_a_out->setStyleSheet("color: red;");
+
+        // Send stop command
+        auto to_write = static_cast<char>(0b0000);
+        ser_water_->write(&to_write);
     }
-
-    qDebug() << "[WARN] Pump control not yet implemented!";
-
-    // TODO: implementation (adapt code below)
-    //water_en_ = false;
-    //water_mode_ = WaterMode::kStandby;
 }
-*/
+
+/**
+ * @brief Controls state of B-side fluid input.
+ *
+ * @note Bit field "0b123":
+ *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ */
+void MainWindow::on_tb_b_in_clicked() {
+    if (ui_->tb_b_in->isChecked()) {
+        // Set visual indicator
+        ui_->tb_b_in->setStyleSheet("color: green;");
+
+        // Disable opposite button
+        ui_->tb_b_out->setEnabled(false);
+        ui_->tb_b_out->setStyleSheet("color: gray;");
+
+        // Send start command
+        auto to_write = static_cast<char>(0b0100);
+        ser_water_->write(&to_write);
+    } else {
+        // Reset visual indicator
+        ui_->tb_b_in->setStyleSheet("color: red;");
+
+        // Re-enable opposite button
+        ui_->tb_b_out->setEnabled(true);
+        ui_->tb_b_out->setStyleSheet("color: red;");
+
+        // Send stop command
+        auto to_write = static_cast<char>(0b0000);
+        ser_water_->write(&to_write);
+    }
+}
+
+/**
+ * @brief Controls state of A-side fluid output.
+ *
+ * @note Bit field "0b123":
+ *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ */
+void MainWindow::on_tb_a_out_clicked() {
+    if (ui_->tb_a_out->isChecked()) {
+        // Set visual indicator
+        ui_->tb_a_out->setStyleSheet("color: green;");
+
+        // Disable opposite button
+        ui_->tb_a_in->setEnabled(false);
+        ui_->tb_a_in->setStyleSheet("color: gray;");
+
+        // Send start command
+        auto to_write = static_cast<char>(0b0010);
+        ser_water_->write(&to_write);
+    } else {
+        // Reset visual indicator
+        ui_->tb_a_out->setStyleSheet("color: red;");
+
+        // Re-enable opposite button
+        ui_->tb_a_in->setEnabled(true);
+        ui_->tb_a_in->setStyleSheet("color: red;");
+
+        // Send stop command
+        auto to_write = static_cast<char>(0b0000);
+        ser_water_->write(&to_write);
+    }
+}
+
+/**
+ * @brief Controls state of B-side fluid output.
+ *
+ * @note Bit field "0b1234":
+ *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ */
+void MainWindow::on_tb_b_out_clicked() {
+    if (ui_->tb_b_out->isChecked()) {
+        // Set visual indicator
+        ui_->tb_b_out->setStyleSheet("color: green;");
+
+        // Disable opposite button
+        ui_->tb_b_in->setEnabled(false);
+        ui_->tb_b_in->setStyleSheet("color: gray;");
+
+        // Send start command
+        auto to_write = static_cast<char>(0b0001);
+        ser_water_->write(&to_write);
+    } else {
+        // Reset visual indicator
+        ui_->tb_b_out->setStyleSheet("color: red;");
+
+        // Re-enable opposite button
+        ui_->tb_b_in->setEnabled(true);
+        ui_->tb_b_in->setStyleSheet("color: red;");
+
+        // Send stop command
+        auto to_write = static_cast<char>(0b0000);
+        ser_water_->write(&to_write);
+    }
+}
 
 //------------------------------------------------------------------------------
 // !Uncategorized

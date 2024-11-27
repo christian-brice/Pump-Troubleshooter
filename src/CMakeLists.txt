@@ -9,8 +9,8 @@
 add_subdirectory(ui) # UI_SRC
 
 # Define project sources for use by root CMakeLists.txt
-set(PROJECT_SRC
+set(PROJECT_SOURCE
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
-    ${UI_SRC}
+    ${UI_SOURCE}
     PARENT_SCOPE
 )

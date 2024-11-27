@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
         <file alias="LIBRA-App_v2.ico">res/LIBRA-App_v2.ico</file>
+        <file alias="refresh.ico">res/refresh.ico</file>
     </qresource>
 </RCC>

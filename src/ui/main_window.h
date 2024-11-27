@@ -43,14 +43,21 @@ class MainWindow : public QMainWindow {
 
     // Preferences Menu
 
-    // void on_a_debug_mode_toggled(bool checked);
+    void on_a_debug_mode_toggled(bool checked);
 
-    // Pumps Menu
+    // Tools Menu
 
-    // void on_a_pump_connect_triggered();
-    // void on_a_pump_disconnect_triggered();
+    void on_a_serial_dialog_triggered();
 
     // --- Main Window ---
+
+    void on_cb_serial_name_currentTextChanged(const QString& sel);
+    void on_pb_refresh_clicked();
+
+    void on_tb_a_in_clicked();
+    void on_tb_b_in_clicked();
+    void on_tb_a_out_clicked();
+    void on_tb_b_out_clicked();
 
     // --- Uncategorized ---
 

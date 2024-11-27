@@ -86,8 +86,6 @@ Update the APT package lists and ensure your system is up to date.
 sudo apt update && sudo apt upgrade
 ```
 
-(TODO: from here to next section)
-
 Install the following packages via the terminal.
 ```bash
 sudo apt install -y build-essential clang libclang-dev clang-format clang-tidy cmake cmake-format doxygen git libgl1-mesa-dev qt6-base-dev libudev-dev
