@@ -191,4 +191,4 @@ __pycache__/
 !thirdparty/**
 
 # Qt build folders
-**/build-*/
+**/build*/
