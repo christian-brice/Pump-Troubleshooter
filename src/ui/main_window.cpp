@@ -24,6 +24,7 @@
  * !Helper Functions
  * !Menu Bar
  * !Main Window
+ * !Misc
  * !Uncategorized
  */
 
@@ -53,8 +54,14 @@ MainWindow::MainWindow(QWidget* parent)
     // Set initial state UI of elements
     ui_->a_debug_mode->setChecked(debug_mode_);
 
-    // Populate the combo box
+    // Populate the Serial Devices combo box
     ui_->pb_refresh->animateClick();
+
+    // Set up slots for debugging
+    connect(ser_water_, &QSerialPort::readyRead,     // if data is received...
+            this, &MainWindow::DataReceived);        // ... read it
+    connect(ser_water_, &QSerialPort::bytesWritten,  // if data is sent...
+            this, &MainWindow::DataSent);            // ... confirm it
 }
 
 /**
@@ -74,7 +81,42 @@ MainWindow::~MainWindow() {
 
 namespace {  // local to this file
 
+/**
+ * @brief Converts QBitArray to QByteArray, since Qt doesn't seem to have a way
+ *        of doing it natively.
+ *
+ * @param bits The QBitArray to convert
+ * @return A QByteArray logically equivalent to the input QBitArray
+ *
+ * @note See The sollowing Stack Overflow thread:
+ *   https://stackoverflow.com/questions/8776261/qbitarray-to-qbytearray
+ */
+QByteArray bitsToBytes(QBitArray bits) {
+    // Prepare byte array object
+    QByteArray bytes;
+    bytes.resize(bits.count() / 8 + 1);
+    bytes.fill(0);
+
+    // Convert from QBitArray to QByteArray
+    for (int b = 0; b < bits.count(); ++b) {
+        bytes[b / 8] = (bytes.at(b / 8) | ((bits[b] ? 1 : 0) << (b % 8)));
+    }
+
+    return bytes;
+}
+
 }  // namespace
+
+void MainWindow::WriteData(const QBitArray data) {
+    // Send data (and verify)
+    const auto ba = bitsToBytes(data);
+    const qint64 written = ser_water_->write(ba);
+    if (written != ba.size()) {
+        qCritical() << "[ERROR] Failed to write all data to "
+                    << ser_water_->portName();
+        QMessageBox::critical(this, tr("Error"), ser_water_->errorString());
+    }
+}
 
 //------------------------------------------------------------------------------
 // !Menu Bar
@@ -127,6 +169,7 @@ void MainWindow::on_cb_serial_name_currentTextChanged(const QString& sel) {
     }
 
     // Set port options
+    ser_water_->setPortName(sel);
     ser_water_->setBaudRate(QSerialPort::Baud115200);
     ser_water_->setDataBits(QSerialPort::Data8);
     ser_water_->setParity(QSerialPort::NoParity);
@@ -134,9 +177,8 @@ void MainWindow::on_cb_serial_name_currentTextChanged(const QString& sel) {
     ser_water_->setFlowControl(QSerialPort::NoFlowControl);
 
     // Only continue if "open" is successful
-    if (!ser_water_->open(QIODevice::WriteOnly)) {
-        qDebug() << "[ERROR] Failed to open port " << ser_water_->portName()
-                 << "\n";
+    if (!ser_water_->open(QIODevice::ReadWrite)) {
+        qCritical() << "[ERROR] Failed to open port " << ser_water_->portName();
         QMessageBox::critical(this, tr("Error"), ser_water_->errorString());
         return;
     }
@@ -165,10 +207,12 @@ void MainWindow::on_pb_refresh_clicked() {
     const auto ports = QSerialPortInfo::availablePorts();
     for (const auto& port_info : ports) {
         if (debug_mode_) {
-            qDebug() << "[DEBUG] Found SerialPort with following metadata\n";
-            qDebug() << "  Port:" << port_info.portName() << "\n"
+            qDebug() << "[DEBUG] Found SerialPort with following metadata\n"
+                     << "  Port:" << port_info.portName() << "\n"
+                     << "  Location:" << port_info.systemLocation() << "\n"
                      << "  Description:" << port_info.description() << "\n"
-                     << "  Manufacturer:" << port_info.manufacturer() << "\n";
+                     << "  Manufacturer:" << port_info.manufacturer() << "\n"
+                     << "  Serial number:" << port_info.serialNumber();
         }
 
         // Populate ComboBox (new items are appended to existing list)
@@ -185,7 +229,10 @@ void MainWindow::on_pb_refresh_clicked() {
  * @brief Controls state of A-side fluid input.
  *
  * @note Bit field "0b123":
- *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ *         1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ *       These are indexed backwards when using QBitArray, since it starts from
+ *       the least significant bit:
+ *         0: B_OUT | 1: A_OUT | 2: B_IN | 3: A_IN
  */
 void MainWindow::on_tb_a_in_clicked() {
     if (ui_->tb_a_in->isChecked()) {
@@ -193,14 +240,12 @@ void MainWindow::on_tb_a_in_clicked() {
         ui_->tb_a_in->setStyleSheet("color: green;");
 
         // Disable opposite button
-        current_cmd_ &= 0b1101;  // only zero opposite action's bit
+        current_cmd_.setBit(1, false);  // zero opposite action's bit
         ui_->tb_a_out->setEnabled(false);
         ui_->tb_a_out->setStyleSheet("color: gray;");
 
-        // Send start command
-        current_cmd_ |= 0b1000;
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set start command
+        current_cmd_.setBit(3, true);
     } else {
         // Reset visual indicator
         ui_->tb_a_in->setStyleSheet("color: red;");
@@ -209,23 +254,21 @@ void MainWindow::on_tb_a_in_clicked() {
         ui_->tb_a_out->setEnabled(true);
         ui_->tb_a_out->setStyleSheet("color: red;");
 
-        // Send stop command
-        current_cmd_ &= 0b0111;  // only zero this action's bit
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set stop command
+        current_cmd_.setBit(3, false);  // only zero this action's bit
     }
 
-    if (debug_mode_) {
-        std::bitset<4> x(current_cmd_);
-        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
-    }
+    WriteData(current_cmd_);
 }
 
 /**
  * @brief Controls state of B-side fluid input.
  *
  * @note Bit field "0b123":
- *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ *         1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ *       These are indexed backwards when using QBitArray, since it starts from
+ *       the least significant bit:
+ *         0: B_OUT | 1: A_OUT | 2: B_IN | 3: A_IN
  */
 void MainWindow::on_tb_b_in_clicked() {
     if (ui_->tb_b_in->isChecked()) {
@@ -233,14 +276,12 @@ void MainWindow::on_tb_b_in_clicked() {
         ui_->tb_b_in->setStyleSheet("color: green;");
 
         // Disable opposite button
-        current_cmd_ &= 0b1110;  // only zero opposite action's bit
+        current_cmd_.setBit(0, false);  // only zero opposite action's bit
         ui_->tb_b_out->setEnabled(false);
         ui_->tb_b_out->setStyleSheet("color: gray;");
 
-        // Send start command
-        current_cmd_ |= 0b0100;
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set start command
+        current_cmd_.setBit(2, true);
     } else {
         // Reset visual indicator
         ui_->tb_b_in->setStyleSheet("color: red;");
@@ -249,23 +290,21 @@ void MainWindow::on_tb_b_in_clicked() {
         ui_->tb_b_out->setEnabled(true);
         ui_->tb_b_out->setStyleSheet("color: red;");
 
-        // Send stop command
-        current_cmd_ &= 0b1011;  // only zero this action's bit
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set stop command
+        current_cmd_.setBit(2, false);  // only zero this action's bit
     }
 
-    if (debug_mode_) {
-        std::bitset<4> x(current_cmd_);
-        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
-    }
+    WriteData(current_cmd_);
 }
 
 /**
  * @brief Controls state of A-side fluid output.
  *
  * @note Bit field "0b123":
- *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ *         1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ *       These are indexed backwards when using QBitArray, since it starts from
+ *       the least significant bit:
+ *         0: B_OUT | 1: A_OUT | 2: B_IN | 3: A_IN
  */
 void MainWindow::on_tb_a_out_clicked() {
     if (ui_->tb_a_out->isChecked()) {
@@ -273,14 +312,12 @@ void MainWindow::on_tb_a_out_clicked() {
         ui_->tb_a_out->setStyleSheet("color: green;");
 
         // Disable opposite button
-        current_cmd_ &= 0b0111;  // only zero opposite action's bit
+        current_cmd_.setBit(3, false);  // only zero opposite action's bit
         ui_->tb_a_in->setEnabled(false);
         ui_->tb_a_in->setStyleSheet("color: gray;");
 
-        // Send start command
-        current_cmd_ |= 0b0010;
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set start command
+        current_cmd_.setBit(1, true);
     } else {
         // Reset visual indicator
         ui_->tb_a_out->setStyleSheet("color: red;");
@@ -289,23 +326,21 @@ void MainWindow::on_tb_a_out_clicked() {
         ui_->tb_a_in->setEnabled(true);
         ui_->tb_a_in->setStyleSheet("color: red;");
 
-        // Send stop command
-        current_cmd_ &= 0b1101;  // only zero this action's bit
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set stop command
+        current_cmd_.setBit(1, false);  // only zero this action's bit
     }
 
-    if (debug_mode_) {
-        std::bitset<4> x(current_cmd_);
-        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
-    }
+    WriteData(current_cmd_);
 }
 
 /**
  * @brief Controls state of B-side fluid output.
  *
- * @note Bit field "0b1234":
- *       1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ * @note Bit field "0b123":
+ *         1: A_IN | 2: B_IN | 3: A_OUT | 4: B_OUT
+ *       These are indexed backwards when using QBitArray, since it starts from
+ *       the least significant bit:
+ *         0: B_OUT | 1: A_OUT | 2: B_IN | 3: A_IN
  */
 void MainWindow::on_tb_b_out_clicked() {
     if (ui_->tb_b_out->isChecked()) {
@@ -313,14 +348,12 @@ void MainWindow::on_tb_b_out_clicked() {
         ui_->tb_b_out->setStyleSheet("color: green;");
 
         // Disable opposite button
-        current_cmd_ &= 0b1011;  // only zero opposite action's bit
+        current_cmd_.setBit(2, false);  // only zero opposite action's bit
         ui_->tb_b_in->setEnabled(false);
         ui_->tb_b_in->setStyleSheet("color: gray;");
 
-        // Send start command
-        current_cmd_ |= 0b0001;
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set start command
+        current_cmd_.setBit(0, true);
     } else {
         // Reset visual indicator
         ui_->tb_b_out->setStyleSheet("color: red;");
@@ -329,16 +362,26 @@ void MainWindow::on_tb_b_out_clicked() {
         ui_->tb_b_in->setEnabled(true);
         ui_->tb_b_in->setStyleSheet("color: red;");
 
-        // Send stop command
-        current_cmd_ &= 0b1110;  // only zero this action's bit
-        auto to_write = static_cast<char>(current_cmd_);
-        ser_water_->write(&to_write);
+        // Set stop command
+        current_cmd_.setBit(0, false);  // only zero this action's bit
     }
 
-    if (debug_mode_) {
-        std::bitset<4> x(current_cmd_);
-        qDebug() << "[DEBUG] Sent " << x.to_string('*') << "\n";
-    }
+    WriteData(current_cmd_);
+}
+
+//------------------------------------------------------------------------------
+// !Misc
+//------------------------------------------------------------------------------
+
+void MainWindow::DataReceived() {
+    const QByteArray data = ser_water_->readAll();
+    qDebug() << "[INFO] Received:" << data;
+}
+
+void MainWindow::DataSent(qint64 bytes) {
+    qDebug() << "[INFO] Wrote:"
+             << QString::number(bytes).rightJustified(8, '0');
+    ;
 }
 
 //------------------------------------------------------------------------------

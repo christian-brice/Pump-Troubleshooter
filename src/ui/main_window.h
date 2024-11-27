@@ -11,6 +11,7 @@
 #include <fstream>
 
 // Other Library Headers
+#include <QBitArray>    // Qt::Core
 #include <QMainWindow>  // Qt::Widgets
 #include <QSerialPort>  // Qt::SerialPort
 
@@ -39,6 +40,11 @@ class MainWindow : public QMainWindow {
 
     // NOLINTBEGIN: Qt-generated
   private slots:
+    // -- General --
+
+    void DataReceived();
+    void DataSent(qint64 bytes);
+
     // --- Menu Bar ---
 
     // Preferences Menu
@@ -66,6 +72,8 @@ class MainWindow : public QMainWindow {
 
     // --- Helper Functions ---
 
+    void WriteData(const QBitArray data);
+
     // --- Data Members ---
 
     Ui::MainWindow* ui_;
@@ -73,5 +81,5 @@ class MainWindow : public QMainWindow {
     bool debug_mode_{true};
 
     QSerialPort* ser_water_{nullptr};
-    uint8_t current_cmd_{0b0000};
+    QBitArray current_cmd_{4};
 };
