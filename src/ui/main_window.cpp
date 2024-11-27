@@ -133,7 +133,7 @@ void MainWindow::on_cb_serial_name_currentTextChanged(const QString& sel) {
     ser_water_->setFlowControl(QSerialPort::NoFlowControl);
 
     // Only continue if "open" is successful
-    if (!ser_water_->open(QIODevice::ReadWrite)) {
+    if (!ser_water_->open(QIODevice::WriteOnly)) {
         qDebug() << "[ERROR] Failed to open port " << ser_water_->portName()
                  << "\n";
         QMessageBox::critical(this, tr("Error"), ser_water_->errorString());
