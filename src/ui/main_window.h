@@ -40,11 +40,6 @@ class MainWindow : public QMainWindow {
 
     // NOLINTBEGIN: Qt-generated
   private slots:
-    // -- General --
-
-    void DataReceived();
-    void DataSent(qint64 bytes);
-
     // --- Menu Bar ---
 
     // Preferences Menu
@@ -78,7 +73,7 @@ class MainWindow : public QMainWindow {
 
     Ui::MainWindow* ui_;
 
-    bool debug_mode_{true};
+    bool debug_mode_{false};
 
     QSerialPort* ser_water_{nullptr};
     QBitArray current_cmd_{4};

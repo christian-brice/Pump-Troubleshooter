@@ -24,7 +24,6 @@
  * !Helper Functions
  * !Menu Bar
  * !Main Window
- * !Misc
  * !Uncategorized
  */
 
@@ -56,12 +55,6 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Populate the Serial Devices combo box
     ui_->pb_refresh->animateClick();
-
-    // Set up slots for debugging
-    connect(ser_water_, &QSerialPort::readyRead,     // if data is received...
-            this, &MainWindow::DataReceived);        // ... read it
-    connect(ser_water_, &QSerialPort::bytesWritten,  // if data is sent...
-            this, &MainWindow::DataSent);            // ... confirm it
 }
 
 /**
@@ -82,16 +75,16 @@ MainWindow::~MainWindow() {
 namespace {  // local to this file
 
 /**
- * @brief Converts QBitArray to QByteArray, since Qt doesn't seem to have a way
- *        of doing it natively.
+ * @brief Converts QBitArray to QByteArray, since Qt doesn't seem to support
+ *        this natively.
  *
  * @param bits The QBitArray to convert
  * @return A QByteArray logically equivalent to the input QBitArray
  *
- * @note See The sollowing Stack Overflow thread:
+ * @note See the following Stack Overflow thread:
  *   https://stackoverflow.com/questions/8776261/qbitarray-to-qbytearray
  */
-QByteArray bitsToBytes(QBitArray bits) {
+QByteArray BitsToBytes(QBitArray bits) {
     // Prepare byte array object
     QByteArray bytes;
     bytes.resize(bits.count() / 8 + 1);
@@ -105,16 +98,40 @@ QByteArray bitsToBytes(QBitArray bits) {
     return bytes;
 }
 
+/**
+ * @brief Converts a QBitArray to QString (for printing), since Qt doesn't seem
+ *        to support this natively.
+ *
+ * @param bits The QBitArray to convert
+ * @return A QString representing the input QBitArray
+ *
+ * @note See the following Stack Overflow thread:
+ *   https://stackoverflow.com/questions/46101782/qt-how-do-i-convert-qbitarray-to-qstring
+ */
+QString BitsToStr(QBitArray bits) {
+    QString str;
+
+    for (auto i = bits.size() - 1; i >= 0; --i) {
+        str += bits.at(i) ? '1' : '0';
+    }
+
+    return str;
+}
+
 }  // namespace
 
 void MainWindow::WriteData(const QBitArray data) {
     // Send data (and verify)
-    const auto ba = bitsToBytes(data);
+    const auto ba = BitsToBytes(data);
     const qint64 written = ser_water_->write(ba);
     if (written != ba.size()) {
         qCritical() << "[ERROR] Failed to write all data to "
                     << ser_water_->portName();
         QMessageBox::critical(this, tr("Error"), ser_water_->errorString());
+    }
+
+    if (debug_mode_) {
+        qDebug() << "[DEBUG] Sent:" << BitsToStr(data);
     }
 }
 
@@ -367,21 +384,6 @@ void MainWindow::on_tb_b_out_clicked() {
     }
 
     WriteData(current_cmd_);
-}
-
-//------------------------------------------------------------------------------
-// !Misc
-//------------------------------------------------------------------------------
-
-void MainWindow::DataReceived() {
-    const QByteArray data = ser_water_->readAll();
-    qDebug() << "[INFO] Received:" << data;
-}
-
-void MainWindow::DataSent(qint64 bytes) {
-    qDebug() << "[INFO] Wrote:"
-             << QString::number(bytes).rightJustified(8, '0');
-    ;
 }
 
 //------------------------------------------------------------------------------
