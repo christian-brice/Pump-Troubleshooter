@@ -30,7 +30,7 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort Widgets)
 
 # Add project subdirectories
-add_subdirectory(src)
+add_subdirectory(src)  # PROJECT_SOURCE
 
 # Add target executable
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

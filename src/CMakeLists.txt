@@ -6,7 +6,7 @@
 ################################################################################
 
 # Collect project source files
-add_subdirectory(ui) # UI_SRC
+add_subdirectory(ui)  # UI_SOURCE
 
 # Define project sources for use by root CMakeLists.txt
 set(PROJECT_SOURCE
