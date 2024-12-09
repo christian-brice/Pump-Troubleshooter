@@ -33,9 +33,7 @@
  * @param parent Owning Qt widget (default: nullptr)
  */
 MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent),
-      ui_(new Ui::MainWindow),
-      ser_water_(new QSerialPort(this)) {
+    : QMainWindow(parent), ui_(new Ui::MainWindow) {
     ui_->setupUi(this);
 
     // Check if app is running in Windows Subsystem for Linux (WSL2)
@@ -69,7 +67,7 @@ MainWindow::MainWindow(QWidget* parent)
      */
 
     // Pump thread
-    pump_thread_ = new PumpThread(this, ser_water_, debug_mode_);
+    pump_thread_ = new PumpThread(this, debug_mode_);
 
     // - MainWindow signals
     connect(this, &MainWindow::UpdateDebugMode,  // update debug mode
@@ -95,11 +93,6 @@ MainWindow::~MainWindow() {
         pump_thread_->wait();  // wait for thread cleanup to finish
     }
 
-    // Close connection to SerialWater Arduino
-    if (ser_water_->isOpen()) {
-        ser_water_->close();
-    }
-
     delete ui_;
 }
 
@@ -110,11 +103,21 @@ MainWindow::~MainWindow() {
  * @param ser_water Pointer to QSerialPort communicating w/ SerialWater Arduino
  * @param debug_mode_ Whether verbose debug text should be output
  */
-PumpThread::PumpThread(QObject* parent, QSerialPort* ser_water, bool debug_mode)
+PumpThread::PumpThread(QObject* parent, bool debug_mode)
     : QThread(parent),
-      ser_water_(ser_water),
       debug_mode_(debug_mode),
+      ser_water_(new QSerialPort(this)),
       last_state_(current_state_) {}
+
+/**
+ * @brief Standard destructor.
+ */
+PumpThread::~PumpThread() {
+    // Close connection to SerialWater Arduino
+    if (ser_water_->isOpen()) {
+        ser_water_->close();
+    }
+}
 
 //------------------------------------------------------------------------------
 // !Helper Functions
@@ -225,6 +228,28 @@ void PumpThread::run() {
     }
 }
 
+void PumpThread::SetSerialWater(const QString& sel) {
+    // Clear the existing Serial object, if it exists
+    if (ser_water_->isOpen()) {
+        ser_water_->close();
+    }
+
+    // Set port options
+    ser_water_->setPortName(sel);
+    ser_water_->setBaudRate(QSerialPort::Baud115200);
+    ser_water_->setDataBits(QSerialPort::Data8);
+    ser_water_->setParity(QSerialPort::NoParity);
+    ser_water_->setStopBits(QSerialPort::OneStop);
+    ser_water_->setFlowControl(QSerialPort::NoFlowControl);
+
+    // Only continue if "open" is successful
+    if (!ser_water_->open(QIODevice::ReadWrite)) {
+        qCritical() << "[ERROR] Failed to open port " << ser_water_->portName()
+                    << "with error" << ser_water_->errorString();
+        return;
+    }
+}
+
 /**
  * @brief Updates the thread's debug mode.
  *
@@ -273,25 +298,8 @@ void MainWindow::on_a_debug_mode_toggled(bool checked) {
  * @brief Connects to the highlighted serial device upon selection.
  */
 void MainWindow::on_cb_serial_name_currentTextChanged(const QString& sel) {
-    // Clear the existing Serial object, if it exists
-    if (ser_water_->isOpen()) {
-        ser_water_->close();
-    }
-
-    // Set port options
-    ser_water_->setPortName(sel);
-    ser_water_->setBaudRate(QSerialPort::Baud115200);
-    ser_water_->setDataBits(QSerialPort::Data8);
-    ser_water_->setParity(QSerialPort::NoParity);
-    ser_water_->setStopBits(QSerialPort::OneStop);
-    ser_water_->setFlowControl(QSerialPort::NoFlowControl);
-
-    // Only continue if "open" is successful
-    if (!ser_water_->open(QIODevice::ReadWrite)) {
-        qCritical() << "[ERROR] Failed to open port " << ser_water_->portName();
-        QMessageBox::critical(this, tr("Error"), ser_water_->errorString());
-        return;
-    }
+    // Tell thread to open a connection to SerialWater
+    pump_thread_->SetSerialWater(sel);
 
     // Enable fluid system controls
     ui_->tb_a_in->setEnabled(true);

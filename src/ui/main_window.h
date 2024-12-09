@@ -33,9 +33,10 @@ class PumpThread : public QThread {
     // NOLINTEND
 
   public:
-    explicit PumpThread(QObject* parent, QSerialPort* ser_water,
-                        bool debug_mode = false);
-    ~PumpThread() override = default;
+    explicit PumpThread(QObject* parent, bool debug_mode = false);
+    ~PumpThread() override;
+
+    void SetSerialWater(const QString& sel);
 
   public slots:
     void SetDebugMode(const bool& enabled);
@@ -103,6 +104,5 @@ class MainWindow : public QMainWindow {
 
     bool debug_mode_{false};
 
-    QSerialPort* ser_water_{nullptr};
     QBitArray current_cmd_{4};  // 4 bits
 };
