@@ -323,14 +323,7 @@
     </property>
     <addaction name="a_debug_mode"/>
    </widget>
-   <widget class="QMenu" name="m_tools">
-    <property name="title">
-     <string>Tools</string>
-    </property>
-    <addaction name="a_serial_dialog"/>
-   </widget>
    <addaction name="m_preferences"/>
-   <addaction name="m_tools"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="a_debug_mode">
