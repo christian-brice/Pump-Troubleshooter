@@ -21,6 +21,7 @@
 
 /* --- TABLE OF CONTENTS ---
  * !Helper Functions
+ * !Worker Thread
  * !Menu Bar
  * !Main Window
  * !Uncategorized
@@ -32,7 +33,8 @@
  * @param parent Owning Qt widget (default: nullptr)
  */
 MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent), ui_(new Ui::MainWindow),
+    : QMainWindow(parent),
+      ui_(new Ui::MainWindow),
       ser_water_(new QSerialPort(this)) {
     ui_->setupUi(this);
 
@@ -54,18 +56,65 @@ MainWindow::MainWindow(QWidget* parent)
 
     // Populate the Serial Devices combo box
     ui_->pb_refresh->animateClick();
+
+    // --- Thread Management ---
+
+    /* In Qt, thread management for subclassed QThreads generally has 4 steps:
+     *   1) Initialize a new QThread object
+     *   2) Register a QThread signal to return data to a MainWindow handler
+     *   3) Register the QThread's exit signal to its own destruction slot
+     *   4) Spin off the QThread
+     * If the thread loops continuously, there is a fifth step:
+     *   5) In the MainWindow destructor, interrupt or forcibly stop the QThread
+     */
+
+    // Pump thread
+    pump_thread_ = new PumpThread(this, ser_water_, debug_mode_);
+
+    // - MainWindow signals
+    connect(this, &MainWindow::UpdateDebugMode,  // update debug mode
+            pump_thread_, &PumpThread::SetDebugMode);
+
+    connect(this, &MainWindow::CommandPumps,  // connect a specific actuator
+            pump_thread_, &PumpThread::UpdatePumps);
+
+    // - Thread cleanup
+    connect(pump_thread_, &PumpThread::finished,      // when thread exits
+            pump_thread_, &PumpThread::deleteLater);  // ... deallocate
+
+    pump_thread_->start();
 }
 
 /**
  * @brief Standard destructor.
  */
 MainWindow::~MainWindow() {
+    // Wrap up the worker thread(s) gracefully
+    if (pump_thread_ != nullptr && pump_thread_->isRunning()) {
+        pump_thread_->requestInterruption();  // signal thread to stop looping
+        pump_thread_->wait();  // wait for thread cleanup to finish
+    }
+
+    // Close connection to SerialWater Arduino
     if (ser_water_->isOpen()) {
         ser_water_->close();
     }
 
     delete ui_;
 }
+
+/**
+ * @brief Standard constructor.
+ *
+ * @param parent Owning Qt widget
+ * @param ser_water Pointer to QSerialPort communicating w/ SerialWater Arduino
+ * @param debug_mode_ Whether verbose debug text should be output
+ */
+PumpThread::PumpThread(QObject* parent, QSerialPort* ser_water, bool debug_mode)
+    : QThread(parent),
+      ser_water_(ser_water),
+      debug_mode_(debug_mode),
+      last_state_(current_state_) {}
 
 //------------------------------------------------------------------------------
 // !Helper Functions
@@ -117,21 +166,85 @@ QString BitsToStr(QBitArray bits) {
     return str;
 }
 
+/**
+ * @brief Converts a QByteArray to QString in binary format (for printing),
+ *        since Qt doesn't seem to support this natively.
+ *
+ * @param bytes The QByteArray to convert
+ * @return A QString representing the input QBitArray in binary format
+ */
+QString BytesToStr(QByteArray bytes) {
+    QString str;
+
+    for (const auto& byte : bytes)
+        for (auto i = 7; i >= 0; --i) {  // hard-coded range of 0-7 = one byte
+            str += (byte & (1 << i)) ? '1' : '0';
+        }
+
+    return str;
+}
+
 }  // namespace
 
-void MainWindow::WriteData(const QBitArray data) {
-    // Send data (and verify)
-    const auto ba = BitsToBytes(data);
-    const qint64 written = ser_water_->write(ba);
-    if (written != ba.size()) {
-        qCritical() << "[ERROR] Failed to write all data to "
-                    << ser_water_->portName();
-        QMessageBox::critical(this, tr("Error"), ser_water_->errorString());
-    }
+//------------------------------------------------------------------------------
+// !Worker Thread
+//------------------------------------------------------------------------------
+
+/**
+ * @brief TODO: documentation.
+ */
+void PumpThread::run() {
+    // Initialize runtime variables
+    current_state_ = 0;
+    last_state_ = 0;
 
     if (debug_mode_) {
-        qDebug() << "[DEBUG] Sent:" << BitsToStr(data);
+        qDebug() << "[DEBUG] Initialized PumpThread";
     }
+
+    // Loop until MainWindow calls QThread::requestInterruption()
+    while (!isInterruptionRequested()) {
+        if (ser_water_ != nullptr && ser_water_->isOpen()) {
+            // Send data (and verify)
+            const qint64 written = ser_water_->write(current_state_);
+            if (written != current_state_.size()) {
+                qCritical() << "[ERROR] Failed to write all data to"
+                            << ser_water_->portName() << "with error"
+                            << ser_water_->errorString();
+            }
+
+            if (debug_mode_ && last_state_ != current_state_) {
+                qDebug() << "[DEBUG] Sending:" << BytesToStr(current_state_);
+            }
+
+            last_state_ = current_state_;
+        }
+
+        // Don't flood the connection
+        QThread::msleep(500);  // ms
+    }
+}
+
+/**
+ * @brief Updates the thread's debug mode.
+ *
+ * @param enabled Whether verbose debug text should be output
+ */
+void PumpThread::SetDebugMode(const bool& enabled) {
+    debug_mode_ = enabled;
+}
+
+/**
+ * @brief Overrides the command the thread continuously sends to SerialWater.
+ *
+ * @param new_cmd New pump (fluid system) state.
+ */
+void PumpThread::UpdatePumps(const QBitArray& new_cmd) {
+    if (debug_mode_) {
+        qDebug() << "[DEBUG] Received:" << BitsToStr(new_cmd);
+    }
+
+    current_state_ = BitsToBytes(new_cmd);
 }
 
 //------------------------------------------------------------------------------
@@ -144,6 +257,8 @@ void MainWindow::WriteData(const QBitArray data) {
  */
 void MainWindow::on_a_debug_mode_toggled(bool checked) {
     debug_mode_ = checked;
+
+    emit UpdateDebugMode(debug_mode_);  // send to PumpThread
 
     if (debug_mode_) {
         qDebug() << "[DEBUG] Debug mode enabled";
@@ -253,7 +368,7 @@ void MainWindow::on_tb_a_in_clicked() {
         current_cmd_.setBit(3, false);  // only zero this action's bit
     }
 
-    WriteData(current_cmd_);
+    emit CommandPumps(current_cmd_);
 }
 
 /**
@@ -289,7 +404,7 @@ void MainWindow::on_tb_b_in_clicked() {
         current_cmd_.setBit(2, false);  // only zero this action's bit
     }
 
-    WriteData(current_cmd_);
+    emit CommandPumps(current_cmd_);
 }
 
 /**
@@ -325,7 +440,7 @@ void MainWindow::on_tb_a_out_clicked() {
         current_cmd_.setBit(1, false);  // only zero this action's bit
     }
 
-    WriteData(current_cmd_);
+    emit CommandPumps(current_cmd_);
 }
 
 /**
@@ -361,7 +476,7 @@ void MainWindow::on_tb_b_out_clicked() {
         current_cmd_.setBit(0, false);  // only zero this action's bit
     }
 
-    WriteData(current_cmd_);
+    emit CommandPumps(current_cmd_);
 }
 
 //------------------------------------------------------------------------------

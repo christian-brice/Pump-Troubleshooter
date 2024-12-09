@@ -14,6 +14,7 @@
 #include <QBitArray>    // Qt::Core
 #include <QMainWindow>  // Qt::Widgets
 #include <QSerialPort>  // Qt::SerialPort
+#include <QThread>      // Qt::Core
 
 // Project Headers
 //   (none)
@@ -25,6 +26,34 @@ class MainWindow;
 }  // namespace Ui
 
 QT_END_NAMESPACE
+
+class PumpThread : public QThread {
+    // NOLINTBEGIN: required by Qt
+    Q_OBJECT
+    // NOLINTEND
+
+  public:
+    explicit PumpThread(QObject* parent, QSerialPort* ser_water,
+                        bool debug_mode = false);
+    ~PumpThread() override = default;
+
+  public slots:
+    void SetDebugMode(const bool& enabled);
+    void UpdatePumps(const QBitArray& new_cmd);
+
+  private:
+    void run() override;
+
+    // --- Helper Functions ---
+
+    // --- Data Members ---
+
+    bool debug_mode_{false};
+
+    QSerialPort* ser_water_{nullptr};
+    QByteArray current_state_{1, '\x00'};
+    QByteArray last_state_{};  // only used for debug output
+};
 
 /**
  * @brief The main command app window.
@@ -38,6 +67,10 @@ class MainWindow : public QMainWindow {
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
 
+  signals:
+    void UpdateDebugMode(const bool& enabled);
+    void CommandPumps(const QBitArray& new_cmd);
+
     // NOLINTBEGIN: Qt-generated
   private slots:
     // --- Menu Bar ---
@@ -45,10 +78,6 @@ class MainWindow : public QMainWindow {
     // Preferences Menu
 
     void on_a_debug_mode_toggled(bool checked);
-
-    // Tools Menu
-
-    void on_a_serial_dialog_triggered();
 
     // --- Main Window ---
 
@@ -67,14 +96,13 @@ class MainWindow : public QMainWindow {
 
     // --- Helper Functions ---
 
-    void WriteData(const QBitArray data);
-
     // --- Data Members ---
 
     Ui::MainWindow* ui_;
+    PumpThread* pump_thread_;
 
     bool debug_mode_{false};
 
     QSerialPort* ser_water_{nullptr};
-    QBitArray current_cmd_{4};
+    QBitArray current_cmd_{4};  // 4 bits
 };
