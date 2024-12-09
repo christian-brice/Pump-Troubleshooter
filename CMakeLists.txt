@@ -30,6 +30,7 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core SerialPort Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core SerialPort Widgets)
 
 # Add project subdirectories
+add_subdirectory(lib)
 add_subdirectory(src)  # PROJECT_SOURCE
 
 # Add target executable
@@ -63,8 +64,8 @@ target_link_libraries(
     PRIVATE Qt${QT_VERSION_MAJOR}::Core
     PRIVATE Qt${QT_VERSION_MAJOR}::SerialPort
     PRIVATE Qt${QT_VERSION_MAJOR}::Widgets
-    # Linux
-    PRIVATE udev
+    # Project
+    PRIVATE pump_thread
 )
 
 # Specify platform-specific properties
