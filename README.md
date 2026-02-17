@@ -17,7 +17,7 @@ Project link: [https://github.com/christian-brice/Pump-Troubleshooter](https://g
 ## Requirements
 
 | | Minimum | Recommended |
-|---|---|---|
+| --- | --- | --- |
 | **Operating System** | Ubuntu 22.04.4<br>(Jammy) | Ubuntu 24.04<br>(Noble) |
 | **C++ Standard** | C++17 | C++17 |
 | **Qt** | 6.1.0 | 6.7.2 |
